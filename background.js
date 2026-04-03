@@ -9,7 +9,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Listen for keyboard shortcut (boss key)
 chrome.commands.onCommand.addListener((command) => {
-  if (command === 'toggle-reader') {
+  if (command === '_execute_action') {
     chrome.runtime.sendMessage({ type: 'togglePanel' });
   }
 });

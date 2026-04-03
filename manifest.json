@@ -16,5 +16,14 @@
     "48": "icon48.png",
     "128": "icon128.png"
   },
-  "devtools_page": "devtools.html"
+  "devtools_page": "devtools.html",
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+H",
+        "mac": "Command+Shift+H"
+      },
+      "description": "Toggle Console Reader"
+    }
+  }
 }
