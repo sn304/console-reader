@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <div class="console-header">
+      <span class="console-title">▶ Console</span>
+      <div class="header-actions">
+        <span class="btn-hide" title="Hide Reader (H)">[HIDE]</span>
+      </div>
+    </div>
+
+    <div class="console-warnings">
+      <div class="warning">⚠ Warning: Large content detected (<span id="line-count">0</span> lines)</div>
+      <div class="warning">⚠ Deprecated: Chapter <span id="chapter-num">1</span> content - consider caching</div>
+      <div class="success">✓ Content loaded successfully</div>
+    </div>
+
+    <div class="reader-content" id="reader-content">
+      <div class="chapter-title" id="chapter-title">第1章</div>
+      <div class="chapter-subtitle">─────────────────────────────────────────</div>
+      <div class="chapter-body" id="chapter-body">
+        <!-- Content loads here -->
+      </div>
+    </div>
+
+    <div class="progress-bar">
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-text"><span id="progress-percent">0</span>%</div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="nav-btn" id="btn-prev">[↑ 上页]</button>
+      <button class="nav-btn" id="btn-toc">[目录]</button>
+      <button class="nav-btn" id="btn-next">[下页 ↓]</button>
+    </div>
+
+    <!-- TOC Modal -->
+    <div class="modal" id="toc-modal" style="display:none;">
+      <div class="modal-content">
+        <div class="modal-header">⚠ Chapter Navigation</div>
+        <div class="chapter-list" id="chapter-list">
+          <!-- Chapters listed here -->
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn" id="btn-cancel">[取消]</button>
+          <button class="modal-btn primary" id="btn-jump">[跳转]</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- File Open -->
+    <input type="file" id="file-input" accept=".epub" style="display:none;">
+  </div>
+
+  <script src="../shared/storage.js"></script>
+  <script src="epub-parser.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>
