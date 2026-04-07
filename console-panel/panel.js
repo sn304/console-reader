@@ -284,9 +284,14 @@ class ConsoleReader {
   }
 
   applySettings(settings) {
-    document.body.className = settings.theme === 'dark' ? '' : `theme-${settings.theme}`;
-    this.elements.chapterBody.style.fontSize = `${settings.fontSize || 14}px`;
-    this.elements.chapterBody.style.lineHeight = settings.lineHeight || '1.6';
+    // Theme is now handled automatically via CSS prefers-color-scheme
+    // Only apply font size and line height from saved settings
+    if (settings.fontSize) {
+      this.elements.chapterBody.style.fontSize = `${settings.fontSize}px`;
+    }
+    if (settings.lineHeight) {
+      this.elements.chapterBody.style.lineHeight = settings.lineHeight;
+    }
   }
 }
 

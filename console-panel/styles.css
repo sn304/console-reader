@@ -5,7 +5,7 @@
 }
 
 :root {
-  /* Dark theme (default - matches VS Code dark+) */
+  /* Dark theme (default) */
   --bg-primary: #1e1e1e;
   --bg-secondary: #252526;
   --bg-tertiary: #2d2d2d;
@@ -23,21 +23,23 @@
   --font-mono: -apple-system, BlinkMacSystemFont, 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 
-.theme-light {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f3f3f3;
-  --bg-tertiary: #e8e8e8;
-  --bg-hover: #e0e0e0;
-  --border-color: #d4d4d4;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-muted: #999999;
-  --accent-blue: #0066b8;
-  --accent-blue-hover: #0078d4;
-  --accent-green: #16825d;
-  --accent-yellow: #a59000;
-  --accent-orange: #a31515;
-  --accent-red: #d73535;
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f3f3f3;
+    --bg-tertiary: #e8e8e8;
+    --bg-hover: #ddd;
+    --border-color: #d4d4d4;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --text-muted: #999999;
+    --accent-blue: #0066b8;
+    --accent-blue-hover: #0078d4;
+    --accent-green: #16825d;
+    --accent-yellow: #a59000;
+    --accent-orange: #a31515;
+    --accent-red: #d73535;
+  }
 }
 
 body {
@@ -337,17 +339,4 @@ body {
 /* Hidden state */
 .hidden {
   display: none !important;
-}
-
-/* Light theme specific overrides */
-.theme-light .console-btn.primary {
-  color: #ffffff;
-}
-
-.theme-light .modal {
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.theme-light .modal-content {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
