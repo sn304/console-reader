@@ -160,14 +160,16 @@ class EpubParser {
   }
 
   parseMetadata(opf) {
-    const dcNs = 'http://purl.org/dc/elements/1.1/';
+    // Use getElementsByTagName to avoid CSS selector issues with namespaces
+    const getTag = (parent, name) => {
+      const tags = parent.getElementsByTagName(name);
+      return tags.length > 0 ? tags[0] : null;
+    };
 
-    const title = opf.querySelector(`metadata ${dcNs}title`) ||
-                  opf.querySelector('metadata title') ||
-                  opf.querySelector('title');
-    const creator = opf.querySelector(`metadata ${dcNs}creator`) ||
-                    opf.querySelector('metadata creator') ||
-                    opf.querySelector('creator');
+    const title = getTag(opf, 'title') ||
+                  getTag(opf.getElementsByTagName('metadata')[0] || opf, 'dc:title');
+    const creator = getTag(opf, 'creator') ||
+                    getTag(opf.getElementsByTagName('metadata')[0] || opf, 'dc:creator');
 
     this.metadata = {
       title: title?.textContent?.trim() || 'Unknown',
