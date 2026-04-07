@@ -281,6 +281,15 @@ class ConsoleReader {
     this.elements.consoleOutput.style.display = 'block';
   }
 
+  showToc() {
+    this.selectedChapterIndex = this.currentChapterIndex;
+    this.elements.tocModal.style.display = 'flex';
+  }
+
+  hideToc() {
+    this.elements.tocModal.style.display = 'none';
+  }
+
   async handleFileOpen(e) {
     const file = e.target.files[0];
     if (!file) return;
