@@ -5,7 +5,8 @@ class ConsoleReader {
     this.currentChapterIndex = 0;
     this.chapterStartLines = [];
     this.allLines = [];
-    this.scrollPosition = 0;
+    this.currentPage = 0;
+    this.linesPerPage = 0;  // Calculated from viewport
     this.fontSize = 13;
 
     this.initElements();
@@ -41,8 +42,8 @@ class ConsoleReader {
   }
 
   bindEvents() {
-    this.elements.btnPrev.addEventListener('click', () => this.prevChapter());
-    this.elements.btnNext.addEventListener('click', () => this.nextChapter());
+    this.elements.btnPrev.addEventListener('click', () => this.prevPage());
+    this.elements.btnNext.addEventListener('click', () => this.nextPage());
     this.elements.btnToc.addEventListener('click', () => this.showToc());
     this.elements.btnCancel.addEventListener('click', () => this.hideToc());
     this.elements.btnJump.addEventListener('click', () => this.jumpToChapter());
@@ -53,7 +54,6 @@ class ConsoleReader {
 
     document.addEventListener('keydown', (e) => this.handleKeydown(e));
     this.elements.fileInput.addEventListener('change', (e) => this.handleFileOpen(e));
-    this.elements.readerContent.addEventListener('scroll', () => this.onScroll());
 
     document.querySelector('.console-header').addEventListener('dblclick', () => {
       this.elements.fileInput.click();
@@ -66,21 +66,24 @@ class ConsoleReader {
     switch(e.key) {
       case 'ArrowUp':
       case 'k':
+      case 'PageUp':
         e.preventDefault();
-        this.elements.readerContent.scrollTop -= 100;
+        this.prevPage();
         break;
       case 'ArrowDown':
       case 'j':
-        e.preventDefault();
-        this.elements.readerContent.scrollTop += 100;
-        break;
-      case 'PageUp':
-        e.preventDefault();
-        this.elements.readerContent.scrollTop -= this.elements.readerContent.clientHeight;
-        break;
       case 'PageDown':
+      case ' ':
         e.preventDefault();
-        this.elements.readerContent.scrollTop += this.elements.readerContent.clientHeight;
+        this.nextPage();
+        break;
+      case 'Home':
+        e.preventDefault();
+        this.firstPage();
+        break;
+      case 'End':
+        e.preventDefault();
+        this.lastPage();
         break;
       case 't':
       case 'T':
@@ -115,42 +118,102 @@ class ConsoleReader {
     }
   }
 
-  onScroll() {
+  // Calculate how many lines fit in the viewport
+  calculateLinesPerPage() {
     const el = this.elements.readerContent;
-    const scrollTop = el.scrollTop;
-    const scrollHeight = el.scrollHeight - el.clientHeight;
+    const bodyEl = this.elements.chapterBody;
 
-    if (scrollHeight > 0) {
-      const progress = (scrollTop / scrollHeight) * 100;
-      this.elements.progressFill.style.width = `${progress}%`;
-      this.elements.progressPercent.textContent = Math.round(progress);
-    }
+    // Get computed style
+    const style = getComputedStyle(bodyEl);
+    const lineHeight = parseFloat(style.lineHeight) || 20;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
 
-    // Update current chapter based on scroll position
-    this.updateCurrentChapter();
+    // Available height = container height - padding
+    const availableHeight = el.clientHeight - paddingTop - paddingBottom;
+
+    // Calculate lines per page
+    this.linesPerPage = Math.floor(availableHeight / lineHeight);
+    this.linesPerPage = Math.max(3, this.linesPerPage);  // At least 3 lines
   }
 
-  updateCurrentChapter() {
-    const el = this.elements.readerContent;
-    const scrollTop = el.scrollTop;
-    const lineHeight = this.getLineHeight();
-    const currentLine = Math.floor(scrollTop / lineHeight);
+  getTotalPages() {
+    if (this.linesPerPage === 0) return 1;
+    return Math.ceil(this.allLines.length / this.linesPerPage);
+  }
 
-    // Find which chapter this line belongs to
-    for (let i = this.chapterStartLines.length - 1; i >= 0; i--) {
-      if (currentLine >= this.chapterStartLines[i]) {
-        if (this.currentChapterIndex !== i) {
-          this.currentChapterIndex = i;
-          this.elements.chapterNum.textContent = i + 1;
-        }
-        break;
-      }
+  prevPage() {
+    if (this.currentPage > 0) {
+      this.currentPage--;
+      this.renderCurrentPage();
+    } else if (this.currentChapterIndex > 0) {
+      // Go to previous chapter
+      this.currentChapterIndex--;
+      this.currentPage = 0;
+      this.renderCurrentPage();
     }
   }
 
-  getLineHeight() {
-    const lineHeight = parseFloat(getComputedStyle(this.elements.chapterBody).lineHeight);
-    return isNaN(lineHeight) ? 20 : lineHeight;
+  nextPage() {
+    const totalPages = this.getTotalPages();
+
+    if (this.currentPage < totalPages - 1) {
+      this.currentPage++;
+      this.renderCurrentPage();
+    } else if (this.currentChapterIndex < this.chapters.length - 1) {
+      // Go to next chapter
+      this.currentChapterIndex++;
+      this.currentPage = 0;
+      this.renderCurrentPage();
+    }
+  }
+
+  firstPage() {
+    this.currentPage = 0;
+    this.renderCurrentPage();
+  }
+
+  lastPage() {
+    this.currentPage = Math.max(0, this.getTotalPages() - 1);
+    this.renderCurrentPage();
+  }
+
+  renderCurrentPage() {
+    // Calculate line range for current page
+    const startLine = this.currentPage * this.linesPerPage;
+    const endLine = Math.min(startLine + this.linesPerPage, this.allLines.length);
+    const pageLines = this.allLines.slice(startLine, endLine);
+
+    // Update display
+    this.elements.chapterBody.textContent = pageLines.join('\n');
+
+    // Update chapter info
+    const chapter = this.chapters[this.currentChapterIndex];
+    this.elements.chapterTitle.textContent = chapter?.title || `Chapter ${this.currentChapterIndex + 1}`;
+    this.elements.chapterTitle.title = chapter?.title || '';
+    this.elements.chapterNum.textContent = this.currentChapterIndex + 1;
+
+    // Update progress
+    this.updateProgress();
+
+    // Update warnings
+    this.elements.lineCount.textContent = this.allLines.length;
+
+    // Update TOC if open
+    this.updateChapterListSelection();
+  }
+
+  updateProgress() {
+    const totalPages = this.getTotalPages();
+    const progress = totalPages > 1 ? (this.currentPage / (totalPages - 1)) * 100 : 0;
+    this.elements.progressFill.style.width = `${progress}%`;
+    this.elements.progressPercent.textContent = Math.round(progress);
+  }
+
+  updateChapterListSelection() {
+    this.elements.chapterList.querySelectorAll('.chapter-item').forEach((item, i) => {
+      item.classList.toggle('current', i === this.currentChapterIndex);
+    });
   }
 
   async checkForOpenBook() {
@@ -198,13 +261,14 @@ class ConsoleReader {
       this.chapters = this.parser.chapters;
       this.currentChapterIndex = 0;
       this.chapterStartLines = [];
+      this.currentPage = 0;
 
       await this.loadAllContent();
 
+      this.calculateLinesPerPage();
       this.hideEmptyState();
-      this.renderContent();
+      this.renderCurrentPage();
       this.updateChapterList();
-      this.updateWarnings();
     } catch (err) {
       console.error('Failed to load book:', err);
       this.showEmptyState();
@@ -225,74 +289,16 @@ class ConsoleReader {
     }
   }
 
-  renderContent() {
-    // Update chapter info
-    const chapter = this.chapters[this.currentChapterIndex];
-    this.elements.chapterTitle.textContent = chapter?.title || `Chapter ${this.currentChapterIndex + 1}`;
-    this.elements.chapterTitle.title = chapter?.title || '';
-    this.elements.chapterNum.textContent = this.currentChapterIndex + 1;
-
-    // Render all content
-    this.elements.chapterBody.textContent = this.allLines.join('\n');
-
-    // Reset scroll position
-    this.elements.readerContent.scrollTop = 0;
-
-    this.updateProgress();
-  }
-
-  prevChapter() {
-    if (this.currentChapterIndex > 0) {
-      this.currentChapterIndex--;
-      this.scrollToChapter(this.currentChapterIndex);
-    }
-  }
-
-  nextChapter() {
-    if (this.currentChapterIndex < this.chapters.length - 1) {
-      this.currentChapterIndex++;
-      this.scrollToChapter(this.currentChapterIndex);
-    }
-  }
-
-  scrollToChapter(chapterIndex) {
-    const lineHeight = this.getLineHeight();
-    const targetLine = this.chapterStartLines[chapterIndex] || 0;
-    this.elements.readerContent.scrollTop = targetLine * lineHeight;
-    this.elements.chapterNum.textContent = chapterIndex + 1;
-    this.updateChapterList();
-  }
-
   changeFontSize(delta) {
     this.fontSize = Math.max(10, Math.min(24, this.fontSize + delta));
     this.elements.chapterBody.style.fontSize = `${this.fontSize}px`;
     this.elements.fontSizeDisplay.textContent = `${this.fontSize}px`;
+
+    // Recalculate lines per page after font change
+    this.calculateLinesPerPage();
+    this.renderCurrentPage();
+
     ReaderStorage.saveSettings({ fontSize: this.fontSize });
-  }
-
-  updateProgress() {
-    const el = this.elements.readerContent;
-    const scrollHeight = el.scrollHeight - el.clientHeight;
-    if (scrollHeight > 0) {
-      const progress = (el.scrollTop / scrollHeight) * 100;
-      this.elements.progressFill.style.width = `${progress}%`;
-      this.elements.progressPercent.textContent = Math.round(progress);
-    }
-  }
-
-  updateWarnings() {
-    this.elements.lineCount.textContent = this.allLines.length;
-    this.elements.chapterNum.textContent = this.currentChapterIndex + 1;
-  }
-
-  showToc() {
-    this.selectedChapterIndex = this.currentChapterIndex;
-    this.updateChapterList();
-    this.elements.tocModal.style.display = 'flex';
-  }
-
-  hideToc() {
-    this.elements.tocModal.style.display = 'none';
   }
 
   updateChapterList() {
@@ -316,7 +322,8 @@ class ConsoleReader {
 
   jumpToChapter() {
     this.currentChapterIndex = this.selectedChapterIndex;
-    this.scrollToChapter(this.currentChapterIndex);
+    this.currentPage = 0;
+    this.renderCurrentPage();
     this.hideToc();
   }
 
@@ -330,7 +337,7 @@ class ConsoleReader {
   async saveProgress() {
     if (!this.parser) return;
     const bookId = this.parser.metadata.title;
-    await ReaderStorage.saveProgress(bookId, this.currentChapterIndex, 0);
+    await ReaderStorage.saveProgress(bookId, this.currentChapterIndex, this.currentPage);
   }
 
   async loadSettings() {
