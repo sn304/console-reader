@@ -253,6 +253,7 @@ class EpubParser {
 
     // Get title
     const titleEl = doc.querySelector('h1, h2, h3, title');
+    console.log('Chapter title for', chapter.href, ':', titleEl?.textContent);
     if (titleEl) {
       chapter.title = titleEl.textContent.trim().substring(0, 100);
     }
