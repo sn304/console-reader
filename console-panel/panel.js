@@ -55,6 +55,7 @@ class ConsoleReader {
 
     // Double click header to open file
     document.querySelector('.console-header').addEventListener('dblclick', () => {
+      console.log('Double-click detected, opening file dialog');
       this.elements.fileInput.click();
     });
   }
@@ -111,10 +112,16 @@ class ConsoleReader {
 
   async handleFileOpen(e) {
     const file = e.target.files[0];
-    if (!file) return;
+    console.log('handleFileOpen called, file:', file?.name, 'size:', file?.size);
+    if (!file) {
+      console.log('No file selected');
+      return;
+    }
 
     try {
+      console.log('Reading file...');
       const arrayBuffer = await file.arrayBuffer();
+      console.log('File read, byteLength:', arrayBuffer.byteLength);
       await this.loadBook({
         name: file.name,
         data: arrayBuffer
