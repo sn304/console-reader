@@ -111,6 +111,36 @@ body {
   color: var(--text-secondary);
 }
 
+.font-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.font-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 1px 6px;
+  cursor: pointer;
+  font-size: 11px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+}
+
+.font-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+
+#font-size-display {
+  color: var(--text-secondary);
+  min-width: 35px;
+  text-align: center;
+  font-size: 11px;
+}
+
 /* Empty state */
 .empty-state {
   display: flex;
