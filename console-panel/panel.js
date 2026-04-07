@@ -58,6 +58,16 @@ class ConsoleReader {
     document.querySelector('.console-header').addEventListener('dblclick', () => {
       this.elements.fileInput.click();
     });
+
+    // Disable mouse wheel scrolling, use it for page navigation
+    this.elements.readerContent.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.deltaY > 0) {
+        this.nextPage();
+      } else if (e.deltaY < 0) {
+        this.prevPage();
+      }
+    }, { passive: false });
   }
 
   handleKeydown(e) {
