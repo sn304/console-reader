@@ -3,10 +3,9 @@ class ConsoleReader {
     this.parser = null;
     this.chapters = [];
     this.currentChapterIndex = 0;
-    this.chapterStartLines = [];  // Line index where each chapter starts
+    this.chapterStartLines = [];
     this.allLines = [];
-    this.visibleLines = 15;  // Will be calculated based on viewport
-    this.scrollPosition = 0;  // Current scroll position in lines
+    this.scrollPosition = 0;
     this.fontSize = 13;
 
     this.initElements();
@@ -42,8 +41,8 @@ class ConsoleReader {
   }
 
   bindEvents() {
-    this.elements.btnPrev.addEventListener('click', () => this.scrollUp());
-    this.elements.btnNext.addEventListener('click', () => this.scrollDown());
+    this.elements.btnPrev.addEventListener('click', () => this.prevChapter());
+    this.elements.btnNext.addEventListener('click', () => this.nextChapter());
     this.elements.btnToc.addEventListener('click', () => this.showToc());
     this.elements.btnCancel.addEventListener('click', () => this.hideToc());
     this.elements.btnJump.addEventListener('click', () => this.jumpToChapter());
@@ -54,7 +53,7 @@ class ConsoleReader {
 
     document.addEventListener('keydown', (e) => this.handleKeydown(e));
     this.elements.fileInput.addEventListener('change', (e) => this.handleFileOpen(e));
-    this.elements.readerContent.addEventListener('scroll', () => this.handleScroll());
+    this.elements.readerContent.addEventListener('scroll', () => this.onScroll());
 
     document.querySelector('.console-header').addEventListener('dblclick', () => {
       this.elements.fileInput.click();
@@ -68,20 +67,20 @@ class ConsoleReader {
       case 'ArrowUp':
       case 'k':
         e.preventDefault();
-        this.scrollUp();
+        this.elements.readerContent.scrollTop -= 100;
         break;
       case 'ArrowDown':
       case 'j':
         e.preventDefault();
-        this.scrollDown();
+        this.elements.readerContent.scrollTop += 100;
         break;
       case 'PageUp':
         e.preventDefault();
-        this.scrollUp(this.visibleLines);
+        this.elements.readerContent.scrollTop -= this.elements.readerContent.clientHeight;
         break;
       case 'PageDown':
         e.preventDefault();
-        this.scrollDown(this.visibleLines);
+        this.elements.readerContent.scrollTop += this.elements.readerContent.clientHeight;
         break;
       case 't':
       case 'T':
@@ -116,53 +115,42 @@ class ConsoleReader {
     }
   }
 
-  handleScroll() {
-    // Sync scroll position with displayed content
-    const scrollTop = this.elements.readerContent.scrollTop;
-    const lineHeight = parseFloat(getComputedStyle(this.elements.chapterBody).lineHeight) || 20;
-    this.scrollPosition = Math.floor(scrollTop / lineHeight);
-    this.updateChapterFromScroll();
-    this.updateProgress();
+  onScroll() {
+    const el = this.elements.readerContent;
+    const scrollTop = el.scrollTop;
+    const scrollHeight = el.scrollHeight - el.clientHeight;
+
+    if (scrollHeight > 0) {
+      const progress = (scrollTop / scrollHeight) * 100;
+      this.elements.progressFill.style.width = `${progress}%`;
+      this.elements.progressPercent.textContent = Math.round(progress);
+    }
+
+    // Update current chapter based on scroll position
+    this.updateCurrentChapter();
   }
 
-  scrollUp(lines = this.visibleLines) {
-    this.scrollPosition = Math.max(0, this.scrollPosition - lines);
-    this.elements.readerContent.scrollTop = this.scrollPosition * this.getLineHeight();
-    this.updateChapterFromScroll();
-    this.updateProgress();
-    this.saveProgress();
-  }
+  updateCurrentChapter() {
+    const el = this.elements.readerContent;
+    const scrollTop = el.scrollTop;
+    const lineHeight = this.getLineHeight();
+    const currentLine = Math.floor(scrollTop / lineHeight);
 
-  scrollDown(lines = this.visibleLines) {
-    this.scrollPosition = Math.min(this.allLines.length - 1, this.scrollPosition + lines);
-    this.elements.readerContent.scrollTop = this.scrollPosition * this.getLineHeight();
-    this.updateChapterFromScroll();
-    this.updateProgress();
-    this.saveProgress();
+    // Find which chapter this line belongs to
+    for (let i = this.chapterStartLines.length - 1; i >= 0; i--) {
+      if (currentLine >= this.chapterStartLines[i]) {
+        if (this.currentChapterIndex !== i) {
+          this.currentChapterIndex = i;
+          this.elements.chapterNum.textContent = i + 1;
+        }
+        break;
+      }
+    }
   }
 
   getLineHeight() {
     const lineHeight = parseFloat(getComputedStyle(this.elements.chapterBody).lineHeight);
     return isNaN(lineHeight) ? 20 : lineHeight;
-  }
-
-  calculateVisibleLines() {
-    const viewportHeight = this.elements.readerContent.clientHeight;
-    const lineHeight = this.getLineHeight();
-    const padding = 30;  // Top/bottom padding
-    this.visibleLines = Math.floor((viewportHeight - padding) / lineHeight);
-    this.visibleLines = Math.max(5, this.visibleLines);  // At least 5 lines
-  }
-
-  updateChapterFromScroll() {
-    // Find which chapter we're currently viewing based on scroll position
-    for (let i = this.chapterStartLines.length - 1; i >= 0; i--) {
-      if (this.scrollPosition >= this.chapterStartLines[i]) {
-        this.currentChapterIndex = i;
-        break;
-      }
-    }
-    this.elements.chapterNum.textContent = this.currentChapterIndex + 1;
   }
 
   async checkForOpenBook() {
@@ -209,13 +197,10 @@ class ConsoleReader {
 
       this.chapters = this.parser.chapters;
       this.currentChapterIndex = 0;
-      this.scrollPosition = 0;
       this.chapterStartLines = [];
 
-      // Load all content and build line array
       await this.loadAllContent();
 
-      this.calculateVisibleLines();
       this.hideEmptyState();
       this.renderContent();
       this.updateChapterList();
@@ -230,7 +215,6 @@ class ConsoleReader {
   async loadAllContent() {
     this.allLines = [];
     this.chapterStartLines = [];
-    this.chapterTitles = [];
 
     for (let i = 0; i < this.parser.chapters.length; i++) {
       this.chapterStartLines.push(this.allLines.length);
@@ -239,59 +223,71 @@ class ConsoleReader {
       const lines = text.split('\n').filter(line => line.trim().length > 0);
       this.allLines.push(...lines);
     }
-
-    // Store chapter titles
-    this.chapterTitles = this.chapters.map(ch => ch.title || 'Chapter');
   }
 
   renderContent() {
-    this.calculateVisibleLines();
-
-    // Show visible range with context
-    const startLine = Math.max(0, this.scrollPosition - this.visibleLines);
-    const endLine = Math.min(this.allLines.length, this.scrollPosition + this.visibleLines * 2);
-
-    const visibleLines = this.allLines.slice(startLine, endLine);
-    this.elements.chapterBody.textContent = visibleLines.join('\n');
-
-    // Update current chapter info
-    this.updateChapterFromScroll();
-
-    // Update title
+    // Update chapter info
     const chapter = this.chapters[this.currentChapterIndex];
-    this.elements.chapterTitle.textContent = chapter?.title || 'Chapter ' + (this.currentChapterIndex + 1);
+    this.elements.chapterTitle.textContent = chapter?.title || `Chapter ${this.currentChapterIndex + 1}`;
     this.elements.chapterTitle.title = chapter?.title || '';
+    this.elements.chapterNum.textContent = this.currentChapterIndex + 1;
 
-    // Scroll to correct position
-    const scrollOffset = this.scrollPosition - startLine;
-    this.elements.readerContent.scrollTop = scrollOffset * this.getLineHeight();
+    // Render all content
+    this.elements.chapterBody.textContent = this.allLines.join('\n');
+
+    // Reset scroll position
+    this.elements.readerContent.scrollTop = 0;
 
     this.updateProgress();
+  }
+
+  prevChapter() {
+    if (this.currentChapterIndex > 0) {
+      this.currentChapterIndex--;
+      this.scrollToChapter(this.currentChapterIndex);
+    }
+  }
+
+  nextChapter() {
+    if (this.currentChapterIndex < this.chapters.length - 1) {
+      this.currentChapterIndex++;
+      this.scrollToChapter(this.currentChapterIndex);
+    }
+  }
+
+  scrollToChapter(chapterIndex) {
+    const lineHeight = this.getLineHeight();
+    const targetLine = this.chapterStartLines[chapterIndex] || 0;
+    this.elements.readerContent.scrollTop = targetLine * lineHeight;
+    this.elements.chapterNum.textContent = chapterIndex + 1;
+    this.updateChapterList();
   }
 
   changeFontSize(delta) {
     this.fontSize = Math.max(10, Math.min(24, this.fontSize + delta));
     this.elements.chapterBody.style.fontSize = `${this.fontSize}px`;
     this.elements.fontSizeDisplay.textContent = `${this.fontSize}px`;
-    this.calculateVisibleLines();
-    this.renderContent();
     ReaderStorage.saveSettings({ fontSize: this.fontSize });
   }
 
   updateProgress() {
-    const progress = this.allLines.length > 0
-      ? (this.scrollPosition / this.allLines.length) * 100
-      : 0;
-    this.elements.progressFill.style.width = `${progress}%`;
-    this.elements.progressPercent.textContent = Math.round(progress);
+    const el = this.elements.readerContent;
+    const scrollHeight = el.scrollHeight - el.clientHeight;
+    if (scrollHeight > 0) {
+      const progress = (el.scrollTop / scrollHeight) * 100;
+      this.elements.progressFill.style.width = `${progress}%`;
+      this.elements.progressPercent.textContent = Math.round(progress);
+    }
   }
 
   updateWarnings() {
     this.elements.lineCount.textContent = this.allLines.length;
+    this.elements.chapterNum.textContent = this.currentChapterIndex + 1;
   }
 
   showToc() {
     this.selectedChapterIndex = this.currentChapterIndex;
+    this.updateChapterList();
     this.elements.tocModal.style.display = 'flex';
   }
 
@@ -320,10 +316,8 @@ class ConsoleReader {
 
   jumpToChapter() {
     this.currentChapterIndex = this.selectedChapterIndex;
-    this.scrollPosition = this.chapterStartLines[this.currentChapterIndex] || 0;
-    this.renderContent();
+    this.scrollToChapter(this.currentChapterIndex);
     this.hideToc();
-    this.saveProgress();
   }
 
   toggleHide() {
@@ -336,7 +330,7 @@ class ConsoleReader {
   async saveProgress() {
     if (!this.parser) return;
     const bookId = this.parser.metadata.title;
-    await ReaderStorage.saveProgress(bookId, this.currentChapterIndex, this.scrollPosition);
+    await ReaderStorage.saveProgress(bookId, this.currentChapterIndex, 0);
   }
 
   async loadSettings() {
