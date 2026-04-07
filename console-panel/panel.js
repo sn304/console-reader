@@ -2,11 +2,11 @@ class ConsoleReader {
   constructor() {
     this.parser = null;
     this.chapters = [];
-    this.currentChapterIndex = 0;
-    this.chapterStartLines = [];
-    this.allLines = [];
-    this.currentPage = 0;
-    this.linesPerPage = 0;
+    this.allLines = [];           // 所有章节内容拼接的数组
+    this.chapterLineRanges = []; // 每个章节在allLines中的[起始索引, 结束索引]
+    this.currentChapterIndex = 0; // 当前章节索引
+    this.linesPerPage = 0;        // 每页行数（由窗口大小决定）
+    this.chapterPageIndex = 0;    // 当前章节内的页索引
     this.fontSize = 13;
     this.selectedChapterIndex = 0;
 
@@ -64,7 +64,7 @@ class ConsoleReader {
       this.elements.fileInput.click();
     });
 
-    // Disable mouse wheel scrolling, use it for page navigation
+    // 禁用滚轮滚动，改为翻页
     this.elements.readerContent.addEventListener('wheel', (e) => {
       e.preventDefault();
       if (e.deltaY > 0) {
@@ -74,7 +74,7 @@ class ConsoleReader {
       }
     }, { passive: false });
 
-    // Recalculate on window resize
+    // 窗口大小变化时重新计算每页行数
     window.addEventListener('resize', () => {
       if (this.parser) {
         this.calculateLinesPerPage();
@@ -141,6 +141,7 @@ class ConsoleReader {
     }
   }
 
+  // 计算每页能显示多少行（由窗口大小决定）
   calculateLinesPerPage() {
     const el = this.elements.readerContent;
     const bodyEl = this.elements.chapterBody;
@@ -157,64 +158,94 @@ class ConsoleReader {
     this.linesPerPage = Math.max(3, this.linesPerPage);
   }
 
-  getTotalPages() {
-    if (this.linesPerPage === 0) return 1;
-    return Math.ceil(this.allLines.length / this.linesPerPage);
+  // 获取当前章节的起止行索引
+  getCurrentChapterRange() {
+    return this.chapterLineRanges[this.currentChapterIndex] || [0, this.allLines.length];
   }
 
+  // 获取当前章节的总页数
+  getChapterPageCount() {
+    const [start, end] = this.getCurrentChapterRange();
+    const chapterLines = end - start;
+    return Math.ceil(chapterLines / this.linesPerPage);
+  }
+
+  // 获取当前章节内的起始行索引
+  getCurrentChapterStartLine() {
+    return this.getCurrentChapterRange()[0];
+  }
+
+  // 上一页
   prevPage() {
-    if (this.currentPage > 0) {
-      this.currentPage--;
+    if (this.chapterPageIndex > 0) {
+      // 当前章节内上一页
+      this.chapterPageIndex--;
       this.renderCurrentPage();
     }
+    // 如果已经在当前章节的第一页，什么都不做（不跳到上一章节）
   }
 
+  // 下一页
   nextPage() {
-    const totalPages = this.getTotalPages();
-    if (this.currentPage < totalPages - 1) {
-      this.currentPage++;
+    const totalPages = this.getChapterPageCount();
+    if (this.chapterPageIndex < totalPages - 1) {
+      // 当前章节内下一页
+      this.chapterPageIndex++;
       this.renderCurrentPage();
     }
+    // 如果已经在当前章节的最后一页，什么都不做（不跳到下一章节）
   }
 
+  // 第一页
   firstPage() {
-    this.currentPage = 0;
+    this.chapterPageIndex = 0;
     this.renderCurrentPage();
   }
 
+  // 最后一页
   lastPage() {
-    this.currentPage = Math.max(0, this.getTotalPages() - 1);
+    this.chapterPageIndex = Math.max(0, this.getChapterPageCount() - 1);
     this.renderCurrentPage();
   }
 
   renderCurrentPage() {
-    const startLine = this.currentPage * this.linesPerPage;
-    const endLine = Math.min(startLine + this.linesPerPage, this.allLines.length);
-    const pageLines = this.allLines.slice(startLine, endLine);
+    const [chapterStart, chapterEnd] = this.getCurrentChapterRange();
+    const chapterLines = chapterEnd - chapterStart;
 
+    // 计算当前页在章节内的起止行
+    const pageStartInChapter = this.chapterPageIndex * this.linesPerPage;
+    const pageEndInChapter = Math.min(pageStartInChapter + this.linesPerPage, chapterLines);
+
+    // 转换为allLines的索引
+    const globalStartLine = chapterStart + pageStartInChapter;
+    const globalEndLine = chapterStart + pageEndInChapter;
+
+    const pageLines = this.allLines.slice(globalStartLine, globalEndLine);
     this.elements.chapterBody.textContent = pageLines.join('\n');
 
+    // 更新章节标题
     const chapter = this.chapters[this.currentChapterIndex];
     this.elements.chapterTitle.textContent = chapter?.title || `Chapter ${this.currentChapterIndex + 1}`;
 
-    // Update status bar displays
-    this.elements.lineCountDisplay.textContent = this.allLines.length;
+    // 更新状态栏
+    this.elements.lineCountDisplay.textContent = chapterLines;
     this.elements.chapterNumDisplay.textContent = this.currentChapterIndex + 1;
 
-    // Update fake console output
+    // 更新假console输出
     this.updateConsoleOutput();
 
+    // 更新进度条（章节内进度）
     this.updateProgress();
+
+    // 更新TOC选中状态
     this.updateChapterListSelection();
   }
 
   updateConsoleOutput() {
-    const totalPages = this.getTotalPages();
-    const chapter = this.chapters[this.currentChapterIndex];
-
     const rows = this.elements.consoleRows;
+    const totalPages = this.getChapterPageCount();
     if (rows[0]) {
-      rows[0].querySelector('.line-count').textContent = this.allLines.length;
+      rows[0].querySelector('.line-count').textContent = this.getCurrentChapterRange()[1] - this.getCurrentChapterRange()[0];
     }
     if (rows[1]) {
       rows[1].querySelector('.chapter-num').textContent = this.currentChapterIndex + 1;
@@ -222,8 +253,8 @@ class ConsoleReader {
   }
 
   updateProgress() {
-    const totalPages = this.getTotalPages();
-    const progress = totalPages > 1 ? (this.currentPage / (totalPages - 1)) * 100 : 0;
+    const totalPages = this.getChapterPageCount();
+    const progress = totalPages > 1 ? (this.chapterPageIndex / (totalPages - 1)) * 100 : 0;
     this.elements.progressFill.style.width = `${progress}%`;
     this.elements.progressPercent.textContent = Math.round(progress);
   }
@@ -280,8 +311,7 @@ class ConsoleReader {
 
       this.chapters = this.parser.chapters;
       this.currentChapterIndex = 0;
-      this.chapterStartLines = [];
-      this.currentPage = 0;
+      this.chapterPageIndex = 0;
 
       await this.loadAllContent();
 
@@ -298,14 +328,17 @@ class ConsoleReader {
 
   async loadAllContent() {
     this.allLines = [];
-    this.chapterStartLines = [];
+    this.chapterLineRanges = [];
 
     for (let i = 0; i < this.parser.chapters.length; i++) {
-      this.chapterStartLines.push(this.allLines.length);
+      const startLine = this.allLines.length;
 
       const text = await this.parser.getChapterContent(i);
       const lines = text.split('\n').filter(line => line.trim().length > 0);
       this.allLines.push(...lines);
+
+      const endLine = this.allLines.length;
+      this.chapterLineRanges.push([startLine, endLine]);
     }
   }
 
@@ -341,7 +374,7 @@ class ConsoleReader {
 
   jumpToChapter() {
     this.currentChapterIndex = this.selectedChapterIndex;
-    this.currentPage = 0;
+    this.chapterPageIndex = 0; // 跳到章节第一页
     this.renderCurrentPage();
     this.hideToc();
   }
@@ -355,7 +388,7 @@ class ConsoleReader {
   async saveProgress() {
     if (!this.parser) return;
     const bookId = this.parser.metadata.title;
-    await ReaderStorage.saveProgress(bookId, this.currentChapterIndex, this.currentPage);
+    await ReaderStorage.saveProgress(bookId, this.currentChapterIndex, this.chapterPageIndex);
   }
 
   async loadSettings() {
