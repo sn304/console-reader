@@ -32,9 +32,9 @@ class ReaderStorage {
   static async getSettings() {
     const data = await chrome.storage.local.get('readerSettings');
     return {
-      fontSize: data.readerSettings?.fontSize || 16,
-      theme: data.readerSettings?.theme || 'light',
-      lineHeight: data.readerSettings?.lineHeight || 1.8,
+      fontSize: data.readerSettings?.fontSize || 13,
+      theme: data.readerSettings?.theme || 'dark',
+      lineHeight: data.readerSettings?.lineHeight || '1.7',
       ...data.readerSettings
     };
   }

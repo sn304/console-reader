@@ -4,7 +4,7 @@ class ConsoleReader {
     this.currentChapter = 0;
     this.totalChapters = 0;
     this.content = [];
-    this.linesPerPage = 20;
+    this.linesPerPage = 25;
     this.currentLine = 0;
     this.selectedChapterIndex = 0;
 
@@ -31,7 +31,9 @@ class ConsoleReader {
       btnCancel: document.getElementById('btn-cancel'),
       btnJump: document.getElementById('btn-jump'),
       btnHide: document.querySelector('.btn-hide'),
-      fileInput: document.getElementById('file-input')
+      btnOpen: document.getElementById('btn-open'),
+      fileInput: document.getElementById('file-input'),
+      emptyState: document.getElementById('empty-state')
     };
   }
 
@@ -43,6 +45,7 @@ class ConsoleReader {
     this.elements.btnCancel.addEventListener('click', () => this.hideToc());
     this.elements.btnJump.addEventListener('click', () => this.jumpToChapter());
     this.elements.btnHide.addEventListener('click', () => this.toggleHide());
+    this.elements.btnOpen.addEventListener('click', () => this.elements.fileInput.click());
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => this.handleKeydown(e));
@@ -57,12 +60,17 @@ class ConsoleReader {
   }
 
   handleKeydown(e) {
+    // Don't handle if in input
+    if (e.target.tagName === 'INPUT') return;
+
     switch(e.key) {
       case 'ArrowUp':
+      case 'k':
         e.preventDefault();
         this.prevPage();
         break;
       case 'ArrowDown':
+      case 'j':
         e.preventDefault();
         this.nextPage();
         break;
@@ -79,76 +87,108 @@ class ConsoleReader {
       case 'Escape':
         this.hideToc();
         break;
+      case 'o':
+      case 'O':
+        this.elements.fileInput.click();
+        break;
     }
   }
 
   async checkForOpenBook() {
     const book = await ReaderStorage.getCurrentBook();
     if (book) {
-      await this.loadBook(book);
+      try {
+        await this.loadBook(book);
+      } catch (e) {
+        console.warn('Failed to load saved book:', e);
+        this.showEmptyState();
+      }
     } else {
-      // Prompt to open file
-      this.elements.chapterBody.innerHTML =
-        '<div style="text-align:center;padding:50px;color:#6a6a6a;">' +
-        'Double-click header to open EPUB file<br><br>or<br><br>' +
-        '<button onclick="document.getElementById(\'file-input\').click()" ' +
-        'style="background:#0e639c;border:none;color:#fff;padding:10px 20px;cursor:pointer;">' +
-        'Open EPUB</button></div>';
+      this.showEmptyState();
     }
+  }
+
+  showEmptyState() {
+    this.elements.emptyState.style.display = 'flex';
+    this.elements.readerContent.style.display = 'none';
+  }
+
+  hideEmptyState() {
+    this.elements.emptyState.style.display = 'none';
+    this.elements.readerContent.style.display = 'block';
   }
 
   async handleFileOpen(e) {
     const file = e.target.files[0];
     if (!file) return;
 
-    const arrayBuffer = await file.arrayBuffer();
-    this.parser = new EpubParser(arrayBuffer);
-    await this.parser.parse();
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      await ReaderStorage.saveCurrentBook({
+        name: file.name,
+        data: Array.from(new Uint8Array(arrayBuffer))
+      });
 
-    await ReaderStorage.saveCurrentBook({
-      name: file.name,
-      data: Array.from(new Uint8Array(arrayBuffer))
-    });
-
-    await this.loadBook({
-      name: file.name,
-      data: Array.from(new Uint8Array(arrayBuffer))
-    });
+      await this.loadBook({
+        name: file.name,
+        data: Array.from(new Uint8Array(arrayBuffer))
+      });
+    } catch (err) {
+      console.error('Failed to open file:', err);
+      alert('Failed to open EPUB file. Please ensure it is a valid EPUB.');
+    }
   }
 
   async loadBook(bookData) {
-    const arrayBuffer = new Uint8Array(bookData.data).buffer;
-    this.parser = new EpubParser(arrayBuffer);
-    await this.parser.parse();
+    try {
+      const arrayBuffer = new Uint8Array(bookData.data).buffer;
+      this.parser = new EpubParser(arrayBuffer);
+      await this.parser.parse();
 
-    this.totalChapters = this.parser.chapters.length;
-    this.content = [];
-    this.currentChapter = 0;
-    this.currentLine = 0;
+      if (this.parser.chapters.length === 0) {
+        throw new Error('No chapters found in EPUB');
+      }
 
-    // Load first chapter
-    await this.loadChapter(0);
-    this.updateChapterList();
-    this.updateWarnings();
+      this.totalChapters = this.parser.chapters.length;
+      this.content = [];
+      this.currentChapter = 0;
+      this.currentLine = 0;
+
+      this.hideEmptyState();
+      await this.loadChapter(0);
+      this.updateChapterList();
+      this.updateWarnings();
+    } catch (err) {
+      console.error('Failed to load book:', err);
+      this.showEmptyState();
+      throw err;
+    }
   }
 
   async loadChapter(index) {
     if (index < 0 || index >= this.totalChapters) return;
 
-    const text = await this.parser.getChapterContent(index);
-    this.content = text.split('\n').filter(line => line.trim());
-    this.currentChapter = index;
-    this.currentLine = 0;
+    try {
+      const text = await this.parser.getChapterContent(index);
+      // Split into paragraphs for better reading
+      this.content = text.split('\n\n').filter(line => line.trim().length > 0);
+      this.currentChapter = index;
+      this.currentLine = 0;
 
-    this.renderPage();
-    this.updateProgress();
-    this.updateWarnings();
-    this.saveProgress();
+      this.renderPage();
+      this.updateProgress();
+      this.updateWarnings();
+      this.saveProgress();
+    } catch (err) {
+      console.error('Failed to load chapter:', err);
+      this.elements.chapterBody.textContent = 'Failed to load chapter content.';
+    }
   }
 
   renderPage() {
     const chapter = this.parser.chapters[this.currentChapter];
     this.elements.chapterTitle.textContent = chapter?.title || `Chapter ${this.currentChapter + 1}`;
+    this.elements.chapterTitle.title = chapter?.title || '';
 
     const pageContent = this.content.slice(this.currentLine, this.currentLine + this.linesPerPage).join('\n\n');
     this.elements.chapterBody.textContent = pageContent || 'No content';
@@ -165,10 +205,6 @@ class ConsoleReader {
       this.saveProgress();
     } else if (this.currentChapter > 0) {
       this.loadChapter(this.currentChapter - 1);
-      this.currentLine = Math.max(0, this.content.length - this.linesPerPage);
-      this.renderPage();
-      this.updateProgress();
-      this.saveProgress();
     }
   }
 
@@ -210,7 +246,7 @@ class ConsoleReader {
 
     this.elements.chapterList.innerHTML = this.parser.chapters.map((ch, i) => `
       <div class="chapter-item ${i === this.currentChapter ? 'current' : ''}"
-           data-index="${i}">${ch.title}</div>
+           data-index="${i}">${ch.title || `Chapter ${i + 1}`}</div>
     `).join('');
 
     this.elements.chapterList.querySelectorAll('.chapter-item').forEach(item => {
@@ -230,7 +266,6 @@ class ConsoleReader {
   }
 
   toggleHide() {
-    // Toggle visibility - for boss key
     this.elements.readerContent.classList.toggle('hidden');
     document.querySelector('.console-warnings').classList.toggle('hidden');
     document.querySelector('.progress-bar').classList.toggle('hidden');
@@ -250,8 +285,8 @@ class ConsoleReader {
 
   applySettings(settings) {
     document.body.className = settings.theme === 'dark' ? '' : `theme-${settings.theme}`;
-    this.elements.chapterBody.style.fontSize = `${settings.fontSize}px`;
-    this.elements.chapterBody.style.lineHeight = settings.lineHeight;
+    this.elements.chapterBody.style.fontSize = `${settings.fontSize || 14}px`;
+    this.elements.chapterBody.style.lineHeight = settings.lineHeight || '1.6';
   }
 }
 
