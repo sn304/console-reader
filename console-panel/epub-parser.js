@@ -5,130 +5,200 @@ class EpubParser {
     this.metadata = {};
     this.chapters = [];
     this.content = '';
+    this.debug = [];
   }
 
   async parse() {
     this.zip = await this.extractZip(this.arrayBuffer);
+    console.log('ZIP entries:', Object.keys(this.zip).slice(0, 30));
 
     const container = await this.readXml('META-INF/container.xml');
-    if (!container) return this;
+    if (!container) {
+      console.error('No container.xml found');
+      return this;
+    }
 
     const rootfile = container.querySelector('rootfile');
-    if (!rootfile) return this;
+    if (!rootfile) {
+      console.error('No rootfile in container');
+      return this;
+    }
 
     const opfPath = rootfile.getAttribute('full-path');
+    console.log('OPF path:', opfPath);
+
     const opf = await this.readXml(opfPath);
-    if (!opf) return this;
+    if (!opf) {
+      console.error('Could not read OPF file:', opfPath);
+      return this;
+    }
 
     this.parseMetadata(opf);
     this.parseSpine(opf, opfPath);
+    console.log('Chapters found:', this.chapters.length, this.chapters);
 
     return this;
   }
 
   async extractZip(buffer) {
-    const entries = this.findZipEntries(buffer);
     const zip = {};
-    for (const entry of entries) {
-      zip[entry.name] = entry.data;
+
+    // Find all local file headers
+    const bytes = new Uint8Array(buffer);
+    let offset = 0;
+
+    while (offset < buffer.byteLength - 4) {
+      // Check for local file header signature
+      if (bytes[offset] === 0x50 && bytes[offset+1] === 0x4b &&
+          bytes[offset+2] === 0x03 && bytes[offset+3] === 0x04) {
+
+        const nameLen = bytes[offset + 26] | (bytes[offset + 27] << 8);
+        const extraLen = bytes[offset + 28] | (bytes[offset + 29] << 8);
+        const compressionMethod = bytes[offset + 8] | (bytes[offset + 9] << 8);
+        const compressedSize = bytes[offset + 18] | (bytes[offset + 19] << 8) |
+                              (bytes[offset + 20] << 16) | (bytes[offset + 21] << 24);
+        const uncompressedSize = bytes[offset + 22] | (bytes[offset + 23] << 8) |
+                                (bytes[offset + 24] << 16) | (bytes[offset + 25] << 24);
+
+        const name = new TextDecoder('utf-8').decode(
+          bytes.slice(offset + 30, offset + 30 + nameLen)
+        );
+
+        const dataOffset = offset + 30 + nameLen + extraLen;
+        let data;
+
+        if (compressionMethod === 0) {
+          // Stored
+          data = bytes.slice(dataOffset, dataOffset + compressedSize);
+        } else if (compressionMethod === 8) {
+          // Deflate
+          const compressed = bytes.slice(dataOffset, dataOffset + compressedSize);
+          if (typeof pako !== 'undefined') {
+            try {
+              data = pako.inflate(compressed);
+            } catch (e) {
+              console.error('Inflate failed for:', name, e);
+              data = compressed;
+            }
+          } else {
+            data = compressed;
+          }
+        } else {
+          data = bytes.slice(dataOffset, dataOffset + compressedSize);
+        }
+
+        // Normalize path
+        const normalizedName = name.replace(/^\.\//, '').replace(/\\/g, '/');
+        if (normalizedName && !normalizedName.endsWith('/')) {
+          zip[normalizedName] = data;
+        }
+
+        // Move to next entry
+        offset = dataOffset + (compressionMethod === 0 ? compressedSize : compressed.length);
+      } else {
+        offset++;
+      }
     }
+
+    // Fallback: also try central directory method
+    if (Object.keys(zip).length === 0) {
+      console.log('Trying central directory method...');
+      this.findViaCentralDirectory(buffer, zip);
+    }
+
     return zip;
   }
 
-  findZipEntries(buffer) {
-    const entries = [];
-    const view = new DataView(buffer);
+  findViaCentralDirectory(buffer, zip) {
     const bytes = new Uint8Array(buffer);
+    const view = new DataView(buffer);
 
-    // Find End of Central Directory signature
-    const eocdSignature = [0x50, 0x4b, 0x05, 0x06];
-    let eocdOffset = -1;
+    // Find EOCD
     for (let i = buffer.byteLength - 22; i >= 0; i--) {
-      if (bytes[i] === eocdSignature[0] && bytes[i+1] === eocdSignature[1] &&
-          bytes[i+2] === eocdSignature[2] && bytes[i+3] === eocdSignature[3]) {
-        eocdOffset = i;
+      if (bytes[i] === 0x50 && bytes[i+1] === 0x4b &&
+          bytes[i+2] === 0x05 && bytes[i+3] === 0x06) {
+
+        const numEntries = view.getUint16(i + 10);
+        const cdOffset = view.getUint32(i + 16);
+        console.log('Found EOCD: entries=', numEntries, 'cdOffset=', cdOffset);
+
+        // Parse CD
+        let cdPos = cdOffset;
+        for (let j = 0; j < numEntries; j++) {
+          if (bytes[cdPos] !== 0x50 || bytes[cdPos+1] !== 0x4b ||
+              bytes[cdPos+2] !== 0x01 || bytes[cdPos+3] !== 0x02) break;
+
+          const nameLen = view.getUint16(cdPos + 28);
+          const extraLen = view.getUint16(cdPos + 30);
+          const commentLen = view.getUint16(cdPos + 32);
+          const localOffset = view.getUint32(cdPos + 42);
+          const compressionMethod = view.getUint16(cdPos + 10);
+          const compressedSize = view.getUint32(cdPos + 20);
+          const uncompressedSize = view.getUint32(cdPos + 24);
+
+          const name = new TextDecoder('utf-8').decode(
+            bytes.slice(cdPos + 46, cdPos + 46 + nameLen)
+          );
+
+          // Read from local header
+          const localNameLen = view.getUint16(localOffset + 26);
+          const localExtraLen = view.getUint16(localOffset + 28);
+          const dataOffset = localOffset + 30 + localNameLen + localExtraLen;
+
+          let data;
+          if (compressionMethod === 0) {
+            data = bytes.slice(dataOffset, dataOffset + compressedSize);
+          } else if (compressionMethod === 8) {
+            const compressed = bytes.slice(dataOffset, dataOffset + compressedSize);
+            if (typeof pako !== 'undefined') {
+              try {
+                data = pako.inflate(compressed);
+              } catch (e) {
+                console.error('Inflate failed:', name);
+                data = compressed;
+              }
+            } else {
+              data = compressed;
+            }
+          } else {
+            data = bytes.slice(dataOffset, dataOffset + compressedSize);
+          }
+
+          const normalizedName = name.replace(/^\.\//, '').replace(/\\/g, '/');
+          if (normalizedName && !normalizedName.endsWith('/')) {
+            zip[normalizedName] = data;
+          }
+
+          cdPos += 46 + nameLen + extraLen + commentLen;
+        }
         break;
       }
     }
-
-    if (eocdOffset === -1) return entries;
-
-    const numEntries = view.getUint16(eocdOffset + 10);
-    const cdOffset = view.getUint32(eocdOffset + 16);
-
-    // Parse Central Directory
-    let cdPos = cdOffset;
-    for (let i = 0; i < numEntries; i++) {
-      if (bytes[cdPos] !== 0x50 || bytes[cdPos+1] !== 0x4b ||
-          bytes[cdPos+2] !== 0x01 || bytes[cdPos+3] !== 0x02) break;
-
-      const nameLen = view.getUint16(cdPos + 28);
-      const extraLen = view.getUint16(cdPos + 30);
-      const commentLen = view.getUint16(cdPos + 32);
-      const localHeaderOffset = view.getUint32(cdPos + 42);
-      const compressionMethod = view.getUint16(cdPos + 10);
-      const compressedSize = view.getUint32(cdPos + 20);
-      const uncompressedSize = view.getUint32(cdPos + 24);
-
-      const name = new TextDecoder('utf-8').decode(
-        bytes.slice(cdPos + 46, cdPos + 46 + nameLen)
-      );
-
-      // Parse local file header
-      const localNameLen = view.getUint16(localHeaderOffset + 26);
-      const localExtraLen = view.getUint16(localHeaderOffset + 28);
-
-      const dataOffset = localHeaderOffset + 30 + localNameLen + localExtraLen;
-      let compressedData = bytes.slice(dataOffset, dataOffset + compressedSize);
-
-      let decompressed;
-      if (compressionMethod === 0) {
-        // Stored - no compression
-        decompressed = compressedData;
-      } else if (compressionMethod === 8) {
-        // Deflate - use pako if available, otherwise return raw
-        if (typeof pako !== 'undefined') {
-          try {
-            decompressed = pako.inflate(compressedData);
-          } catch (e) {
-            console.warn('Pako inflate failed:', e);
-            decompressed = compressedData;
-          }
-        } else {
-          // Fallback: return as-is (may be garbage)
-          console.warn('Pako not available, returning compressed data');
-          decompressed = compressedData;
-        }
-      } else {
-        decompressed = compressedData;
-      }
-
-      // Normalize path
-      const normalizedName = name.replace(/^\.\//, '').replace(/\\/g, '/').replace(/\/$/, '');
-      if (normalizedName) {
-        entries.push({ name: normalizedName, data: decompressed });
-      }
-      cdPos += 46 + nameLen + extraLen + commentLen;
-    }
-
-    return entries;
   }
 
   async readXml(path) {
     if (!path) return null;
 
-    // Try various path normalizations
     const paths = [
       path,
       path.replace(/\\/g, '/'),
       './' + path,
       path.replace(/^\.\//, ''),
-      path.toLowerCase(),
     ];
 
     for (const p of paths) {
       if (this.zip[p]) {
         const text = new TextDecoder('utf-8').decode(this.zip[p]);
+        const parser = new DOMParser();
+        return parser.parseFromString(text, 'text/xml');
+      }
+    }
+
+    // Try case-insensitive match
+    const lowerPath = path.toLowerCase().replace(/\\/g, '/');
+    for (const [name, data] of Object.entries(this.zip)) {
+      if (name.toLowerCase().replace(/\\/g, '/') === lowerPath) {
+        const text = new TextDecoder('utf-8').decode(data);
         const parser = new DOMParser();
         return parser.parseFromString(text, 'text/xml');
       }
@@ -140,45 +210,48 @@ class EpubParser {
   parseMetadata(opf) {
     const dcNs = 'http://purl.org/dc/elements/1.1/';
 
-    let title = opf.querySelector(`metadata ${dcNs}title`) ||
-                opf.querySelector('metadata title') ||
-                opf.querySelector('dc\\:title') ||
-                opf.querySelector('title');
-    let creator = opf.querySelector(`metadata ${dcNs}creator`) ||
-                  opf.querySelector('metadata creator') ||
-                  opf.querySelector('dc\\:creator') ||
-                  opf.querySelector('creator');
+    const title = opf.querySelector(`metadata ${dcNs}title`) ||
+                  opf.querySelector('metadata title') ||
+                  opf.querySelector('dc\\:title') ||
+                  opf.querySelector('title');
+    const creator = opf.querySelector(`metadata ${dcNs}creator`) ||
+                    opf.querySelector('metadata creator') ||
+                    opf.querySelector('dc\\:creator') ||
+                    opf.querySelector('creator');
 
     this.metadata = {
-      title: title?.textContent?.trim() || 'Unknown Title',
-      creator: creator?.textContent?.trim() || 'Unknown Author'
+      title: title?.textContent?.trim() || 'Unknown',
+      creator: creator?.textContent?.trim() || 'Unknown'
     };
+    console.log('Metadata:', this.metadata);
   }
 
   parseSpine(opf, opfPath) {
     const manifest = {};
     const opfDir = opfPath ? opfPath.split('/').slice(0, -1).join('/') : '';
 
+    // Build manifest
     const items = opf.querySelectorAll('manifest item');
     items.forEach(item => {
       const id = item.getAttribute('id');
       const href = item.getAttribute('href');
       const mediaType = item.getAttribute('media-type') || '';
 
-      if (href && (mediaType.includes('html') || mediaType.includes('xml') ||
-                   mediaType.includes('xhtml') || !mediaType || mediaType === 'application/xhtml+xml')) {
+      if (href) {
         let fullHref = href;
-        if (opfDir && href.indexOf('/') === -1 && opfDir) {
+        if (opfDir && !href.includes('/')) {
           fullHref = opfDir + '/' + href;
         }
         fullHref = fullHref.replace(/^\.\//, '').replace(/\/$/, '');
         manifest[id] = fullHref;
       }
     });
+    console.log('Manifest:', manifest);
 
+    // Parse spine
     const spineItems = opf.querySelectorAll('spine itemref');
     let index = 0;
-    spineItems.forEach((item) => {
+    spineItems.forEach(item => {
       const idref = item.getAttribute('idref');
       const href = manifest[idref];
       if (href) {
@@ -189,13 +262,18 @@ class EpubParser {
         });
       }
     });
+    console.log('Spine chapters:', this.chapters.length);
 
-    // If no chapters from spine, try to find HTML files
+    // Fallback: find HTML files
     if (this.chapters.length === 0) {
+      console.log('No spine items, searching for HTML files...');
       const htmlFiles = Object.keys(this.zip).filter(k =>
         (k.endsWith('.html') || k.endsWith('.xhtml') || k.endsWith('.htm')) &&
-        !k.toLowerCase().includes('toc') && !k.toLowerCase().includes('nav')
-      );
+        !k.toLowerCase().includes('toc') &&
+        !k.toLowerCase().includes('nav') &&
+        !k.toLowerCase().includes('cover')
+      ).sort();
+
       htmlFiles.forEach((href, i) => {
         this.chapters.push({
           index: i,
@@ -203,6 +281,7 @@ class EpubParser {
           title: `Chapter ${i + 1}`
         });
       });
+      console.log('HTML chapters:', this.chapters.length, htmlFiles);
     }
   }
 
@@ -218,15 +297,7 @@ class EpubParser {
       chapter.href.split('/').pop(),
     ];
 
-    // Also try without opfDir prefix
-    if (content === null) {
-      const opfDir = this.getOpfDirectory();
-      if (opfDir && chapter.href.startsWith(opfDir + '/')) {
-        const relative = chapter.href.substring(opfDir.length + 1);
-        searchPaths.push(relative);
-      }
-    }
-
+    // Try to find
     for (const p of searchPaths) {
       if (this.zip[p]) {
         content = this.zip[p];
@@ -234,12 +305,12 @@ class EpubParser {
       }
     }
 
-    // Try partial match
+    // Partial match
     if (!content) {
-      const searchName = chapter.href.split('/').pop().toLowerCase()
-        .replace(/\.[^.]+$/, '');
+      const searchName = chapter.href.split('/').pop()
+        .replace(/\.[^.]+$/, '').toLowerCase();
       for (const [name, data] of Object.entries(this.zip)) {
-        const nameLower = name.toLowerCase().replace(/\.[^.]+$/, '');
+        const nameLower = name.replace(/\.[^.]+$/, '').toLowerCase();
         if (nameLower.includes(searchName) || searchName.includes(nameLower)) {
           content = data;
           chapter.href = name;
@@ -249,61 +320,31 @@ class EpubParser {
     }
 
     if (!content) {
-      console.warn('Could not find chapter:', chapter.href);
-      console.warn('Available files:', Object.keys(this.zip).slice(0, 20));
+      console.error('Chapter not found:', chapter.href);
       return '';
     }
 
     const text = new TextDecoder('utf-8').decode(content);
-
-    // Parse HTML and extract text
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, 'text/html');
 
-    // Remove unwanted elements
-    doc.querySelectorAll('script, style, noscript, iframe, object, embed').forEach(el => el.remove());
+    doc.querySelectorAll('script, style, noscript').forEach(el => el.remove());
 
-    // Get title
     const titleEl = doc.querySelector('h1, h2, h3, title');
     if (titleEl) {
       chapter.title = titleEl.textContent.trim().substring(0, 100);
     }
 
-    // Get body or main content
-    const body = doc.querySelector('body') ||
-                 doc.querySelector('section[role="main"]') ||
-                 doc.querySelector('main') ||
-                 doc.querySelector('article') ||
-                 doc.body;
+    const body = doc.body || doc.querySelector('main') || doc.querySelector('article') || doc.body;
 
-    if (!body) {
-      return doc.documentElement?.textContent?.trim() || '';
-    }
-
-    return this.cleanText(body.textContent || '');
-  }
-
-  getOpfDirectory() {
-    for (const name of Object.keys(this.zip)) {
-      if (name.endsWith('.opf')) {
-        const parts = name.split('/');
-        if (parts.length > 1) {
-          return parts.slice(0, -1).join('/');
-        }
-      }
-    }
-    return '';
+    return this.cleanText(body?.textContent || doc.documentElement?.textContent || '');
   }
 
   cleanText(text) {
     return text
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n')
-      .replace(/\t/g, ' ')
-      .replace(/[ ]+/g, ' ')
-      .replace(/\n\s*\n/g, '\n\n')
-      .replace(/ +\n/g, '\n')
-      .replace(/\n +/g, '\n')
+      .replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+      .replace(/\t/g, ' ').replace(/ +/g, ' ')
+      .replace(/\n +\n/g, '\n\n').replace(/ +\n/g, '\n').replace(/\n +/g, '\n')
       .trim();
   }
 }
