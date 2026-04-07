@@ -4,8 +4,8 @@
   box-sizing: border-box;
 }
 
+/* DevTools Dark Theme (default) */
 :root {
-  /* DevTools Dark Theme Colors */
   --dt-bg: #1e1e1e;
   --dt-bg-secondary: #252526;
   --dt-bg-tertiary: #2d2d2d;
@@ -22,6 +22,27 @@
   --dt-red: #f14c4c;
   --dt-purple: #c586c0;
   --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* DevTools Light Theme */
+@media (prefers-color-scheme: light) {
+  :root {
+    --dt-bg: #ffffff;
+    --dt-bg-secondary: #f3f3f3;
+    --dt-bg-tertiary: #e8e8e8;
+    --dt-bg-hover: #ddd;
+    --dt-border: #d4d4d4;
+    --dt-text: #333333;
+    --dt-text-dim: #666666;
+    --dt-text-muted: #999999;
+    --dt-blue: #0066bb;
+    --dt-blue-dim: #0066bb;
+    --dt-green: #16825d;
+    --dt-yellow: #a59000;
+    --dt-orange: #a31515;
+    --dt-red: #d73535;
+    --dt-purple: #881798;
+  }
 }
 
 body {

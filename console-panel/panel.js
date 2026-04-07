@@ -166,22 +166,13 @@ class ConsoleReader {
     if (this.currentPage > 0) {
       this.currentPage--;
       this.renderCurrentPage();
-    } else if (this.currentChapterIndex > 0) {
-      this.currentChapterIndex--;
-      this.currentPage = 0;
-      this.renderCurrentPage();
     }
   }
 
   nextPage() {
     const totalPages = this.getTotalPages();
-
     if (this.currentPage < totalPages - 1) {
       this.currentPage++;
-      this.renderCurrentPage();
-    } else if (this.currentChapterIndex < this.chapters.length - 1) {
-      this.currentChapterIndex++;
-      this.currentPage = 0;
       this.renderCurrentPage();
     }
   }
