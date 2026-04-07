@@ -39,12 +39,13 @@ class EpubParser {
   async extractZip(buffer) {
     const zip = {};
     const bytes = new Uint8Array(buffer);
-    const view = new DataView(buffer);
 
-    // Find EOCD (End of Central Directory)
+    // Find EOCD (End of Central Directory) - use direct byte comparison
+    // EOCD signature is: 0x50 0x4b 0x05 0x06 (little-endian)
     let eocdOffset = -1;
     for (let i = buffer.byteLength - 22; i >= 0; i--) {
-      if (view.getUint32(i) === 0x06054b50) {
+      if (bytes[i] === 0x50 && bytes[i+1] === 0x4b &&
+          bytes[i+2] === 0x05 && bytes[i+3] === 0x06) {
         eocdOffset = i;
         break;
       }
@@ -56,27 +57,30 @@ class EpubParser {
     }
 
     console.log('EOCD found at:', eocdOffset);
-    const numEntries = view.getUint16(eocdOffset + 10);
-    const cdOffset = view.getUint32(eocdOffset + 16);
+    // Read using DataView with little-endian
+    const view = new DataView(buffer);
+    const numEntries = view.getUint16(eocdOffset + 10, true);
+    const cdOffset = view.getUint32(eocdOffset + 16, true);
     console.log('numEntries:', numEntries, 'cdOffset:', cdOffset);
 
     // Parse Central Directory
     let cdPos = cdOffset;
     for (let i = 0; i < numEntries; i++) {
-      if (view.getUint32(cdPos) !== 0x02014b50) break;
+      if (bytes[cdPos] !== 0x50 || bytes[cdPos+1] !== 0x4b ||
+          bytes[cdPos+2] !== 0x01 || bytes[cdPos+3] !== 0x02) break;
 
-      const compressionMethod = view.getUint16(cdPos + 10);
-      const nameLen = view.getUint16(cdPos + 28);
-      const extraLen = view.getUint16(cdPos + 30);
-      const commentLen = view.getUint16(cdPos + 32);
-      const compressedSize = view.getUint32(cdPos + 20);
-      const localOffset = view.getUint32(cdPos + 42);
+      const compressionMethod = view.getUint16(cdPos + 10, true);
+      const nameLen = view.getUint16(cdPos + 28, true);
+      const extraLen = view.getUint16(cdPos + 30, true);
+      const commentLen = view.getUint16(cdPos + 32, true);
+      const compressedSize = view.getUint32(cdPos + 20, true);
+      const localOffset = view.getUint32(cdPos + 42, true);
 
       const name = new TextDecoder().decode(bytes.slice(cdPos + 46, cdPos + 46 + nameLen));
 
       // Read from local header
-      const localNameLen = view.getUint16(localOffset + 26);
-      const localExtraLen = view.getUint16(localOffset + 28);
+      const localNameLen = view.getUint16(localOffset + 26, true);
+      const localExtraLen = view.getUint16(localOffset + 28, true);
       const dataOffset = localOffset + 30 + localNameLen + localExtraLen;
 
       let data;
