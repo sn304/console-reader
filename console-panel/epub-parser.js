@@ -9,6 +9,8 @@ class EpubParser {
   async parse() {
     this.zip = await this.extractZip(this.arrayBuffer);
 
+    console.log('extractZip done, ZIP keys:', Object.keys(this.zip).slice(0, 10));
+
     const container = await this.readXml('META-INF/container.xml');
     if (!container) {
       console.error('No container.xml found');
@@ -49,12 +51,14 @@ class EpubParser {
     }
 
     if (eocdOffset === -1) {
-      console.error('No EOCD found');
+      console.error('No EOCD found, buffer length:', buffer.byteLength);
       return zip;
     }
 
+    console.log('EOCD found at:', eocdOffset);
     const numEntries = view.getUint16(eocdOffset + 10);
     const cdOffset = view.getUint32(eocdOffset + 16);
+    console.log('numEntries:', numEntries, 'cdOffset:', cdOffset);
 
     // Parse Central Directory
     let cdPos = cdOffset;
@@ -102,6 +106,7 @@ class EpubParser {
       cdPos += 46 + nameLen + extraLen + commentLen;
     }
 
+    console.log('ZIP extracted, total keys:', Object.keys(zip).length);
     return zip;
   }
 

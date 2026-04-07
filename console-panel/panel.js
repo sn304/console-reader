@@ -134,6 +134,9 @@ class ConsoleReader {
       this.parser = new EpubParser(arrayBuffer);
       await this.parser.parse();
 
+      console.log('EPUB parsed, chapters:', this.parser.chapters.length, this.parser.chapters);
+      console.log('ZIP keys sample:', Object.keys(this.parser.zip || {}).slice(0, 5));
+
       if (this.parser.chapters.length === 0) {
         throw new Error('No chapters found in EPUB');
       }
@@ -147,6 +150,8 @@ class ConsoleReader {
       await this.loadChapter(0);
       this.updateChapterList();
       this.updateWarnings();
+
+      console.log('Book loaded, content paragraphs:', this.content.length);
     } catch (err) {
       console.error('Failed to load book:', err);
       this.showEmptyState();
