@@ -102,7 +102,6 @@ class EpubParser {
       cdPos += 46 + nameLen + extraLen + commentLen;
     }
 
-    console.log('ZIP files extracted:', Object.keys(zip).length);
     return zip;
   }
 
@@ -217,36 +216,25 @@ class EpubParser {
 
   async getChapterContent(index) {
     const chapter = this.chapters[index];
-    if (!chapter) {
-      console.error('No chapter at index:', index);
-      return '';
-    }
+    if (!chapter) return '';
 
-    console.log('Getting chapter:', index, chapter.href);
     let content = this.zip[chapter.href];
 
     // Try to find with different paths
     if (!content) {
       const searchName = chapter.href.split('/').pop();
-      console.log('Content not found, searching for:', searchName);
       for (const [name, data] of Object.entries(this.zip)) {
         if (name.endsWith(searchName) || name.includes(searchName.replace('.html', ''))) {
           content = data;
           chapter.href = name;
-          console.log('Found at:', name);
           break;
         }
       }
     }
 
-    if (!content) {
-      console.error('Chapter not found:', chapter.href, 'Available:', Object.keys(this.zip));
-      return '';
-    }
+    if (!content) return '';
 
     const text = new TextDecoder().decode(content);
-    console.log('Chapter text length:', text.length, 'First 100:', text.substring(0, 100));
-
     const doc = new DOMParser().parseFromString(text, 'text/html');
 
     // Remove scripts/styles

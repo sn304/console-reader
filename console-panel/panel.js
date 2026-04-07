@@ -95,17 +95,8 @@ class ConsoleReader {
   }
 
   async checkForOpenBook() {
-    const book = await ReaderStorage.getCurrentBook();
-    if (book) {
-      try {
-        await this.loadBook(book);
-      } catch (e) {
-        console.warn('Failed to load saved book:', e);
-        this.showEmptyState();
-      }
-    } else {
-      this.showEmptyState();
-    }
+    // Always show empty state - we no longer persist EPUB files
+    this.showEmptyState();
   }
 
   showEmptyState() {
@@ -124,14 +115,9 @@ class ConsoleReader {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      await ReaderStorage.saveCurrentBook({
-        name: file.name,
-        data: Array.from(new Uint8Array(arrayBuffer))
-      });
-
       await this.loadBook({
         name: file.name,
-        data: Array.from(new Uint8Array(arrayBuffer))
+        data: arrayBuffer
       });
     } catch (err) {
       console.error('Failed to open file:', err);
@@ -141,12 +127,12 @@ class ConsoleReader {
 
   async loadBook(bookData) {
     try {
-      const arrayBuffer = new Uint8Array(bookData.data).buffer;
+      // Handle both direct ArrayBuffer and stored format
+      const arrayBuffer = bookData.data instanceof ArrayBuffer
+        ? bookData.data
+        : new Uint8Array(bookData.data).buffer;
       this.parser = new EpubParser(arrayBuffer);
       await this.parser.parse();
-
-      console.log('Parsed EPUB, chapters:', this.parser.chapters.length);
-      console.log('Chapters:', this.parser.chapters);
 
       if (this.parser.chapters.length === 0) {
         throw new Error('No chapters found in EPUB');
@@ -172,12 +158,8 @@ class ConsoleReader {
     if (index < 0 || index >= this.totalChapters) return;
 
     try {
-      console.log('Loading chapter', index, 'of', this.totalChapters);
       const text = await this.parser.getChapterContent(index);
-      console.log('Got text, length:', text.length);
-      // Split into paragraphs for better reading
       this.content = text.split('\n\n').filter(line => line.trim().length > 0);
-      console.log('Content paragraphs:', this.content.length);
       this.currentChapter = index;
       this.currentLine = 0;
 
