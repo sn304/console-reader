@@ -145,6 +145,9 @@ class ConsoleReader {
       this.parser = new EpubParser(arrayBuffer);
       await this.parser.parse();
 
+      console.log('Parsed EPUB, chapters:', this.parser.chapters.length);
+      console.log('Chapters:', this.parser.chapters);
+
       if (this.parser.chapters.length === 0) {
         throw new Error('No chapters found in EPUB');
       }
@@ -169,9 +172,12 @@ class ConsoleReader {
     if (index < 0 || index >= this.totalChapters) return;
 
     try {
+      console.log('Loading chapter', index, 'of', this.totalChapters);
       const text = await this.parser.getChapterContent(index);
+      console.log('Got text, length:', text.length);
       // Split into paragraphs for better reading
       this.content = text.split('\n\n').filter(line => line.trim().length > 0);
+      console.log('Content paragraphs:', this.content.length);
       this.currentChapter = index;
       this.currentLine = 0;
 
