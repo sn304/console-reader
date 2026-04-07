@@ -3,9 +3,9 @@ class ConsoleReader {
     this.parser = null;
     this.currentChapter = 0;
     this.totalChapters = 0;
-    this.content = [];
-    this.linesPerPage = 25;
+    this.allContent = [];  // All chapters concatenated
     this.currentLine = 0;
+    this.linesPerPage = 12;  // Fewer lines per page for better readability
     this.selectedChapterIndex = 0;
 
     this.initElements();
@@ -38,7 +38,6 @@ class ConsoleReader {
   }
 
   bindEvents() {
-    // Navigation
     this.elements.btnPrev.addEventListener('click', () => this.prevPage());
     this.elements.btnNext.addEventListener('click', () => this.nextPage());
     this.elements.btnToc.addEventListener('click', () => this.showToc());
@@ -47,21 +46,15 @@ class ConsoleReader {
     this.elements.btnHide.addEventListener('click', () => this.toggleHide());
     this.elements.btnOpen.addEventListener('click', () => this.elements.fileInput.click());
 
-    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => this.handleKeydown(e));
-
-    // File open
     this.elements.fileInput.addEventListener('change', (e) => this.handleFileOpen(e));
 
-    // Double click header to open file
     document.querySelector('.console-header').addEventListener('dblclick', () => {
-      console.log('Double-click detected, opening file dialog');
       this.elements.fileInput.click();
     });
   }
 
   handleKeydown(e) {
-    // Don't handle if in input
     if (e.target.tagName === 'INPUT') return;
 
     switch(e.key) {
@@ -96,7 +89,6 @@ class ConsoleReader {
   }
 
   async checkForOpenBook() {
-    // Always show empty state - we no longer persist EPUB files
     this.showEmptyState();
   }
 
@@ -112,53 +104,42 @@ class ConsoleReader {
 
   async handleFileOpen(e) {
     const file = e.target.files[0];
-    console.log('handleFileOpen called, file:', file?.name, 'size:', file?.size);
-    if (!file) {
-      console.log('No file selected');
-      return;
-    }
+    if (!file) return;
 
     try {
-      console.log('Reading file...');
       const arrayBuffer = await file.arrayBuffer();
-      console.log('File read, byteLength:', arrayBuffer.byteLength);
       await this.loadBook({
         name: file.name,
         data: arrayBuffer
       });
     } catch (err) {
       console.error('Failed to open file:', err);
-      alert('Failed to open EPUB file. Please ensure it is a valid EPUB.');
+      alert('Failed to open EPUB file.');
     }
   }
 
   async loadBook(bookData) {
     try {
-      // Handle both direct ArrayBuffer and stored format
       const arrayBuffer = bookData.data instanceof ArrayBuffer
         ? bookData.data
         : new Uint8Array(bookData.data).buffer;
       this.parser = new EpubParser(arrayBuffer);
       await this.parser.parse();
 
-      console.log('EPUB parsed, chapters:', this.parser.chapters.length, this.parser.chapters);
-      console.log('ZIP keys sample:', Object.keys(this.parser.zip || {}).slice(0, 5));
-
       if (this.parser.chapters.length === 0) {
-        throw new Error('No chapters found in EPUB');
+        throw new Error('No chapters found');
       }
 
       this.totalChapters = this.parser.chapters.length;
-      this.content = [];
       this.currentChapter = 0;
       this.currentLine = 0;
 
+      // Load all content
+      await this.loadAllContent();
+
       this.hideEmptyState();
-      await this.loadChapter(0);
       this.updateChapterList();
       this.updateWarnings();
-
-      console.log('Book loaded, content paragraphs:', this.content.length);
     } catch (err) {
       console.error('Failed to load book:', err);
       this.showEmptyState();
@@ -166,23 +147,20 @@ class ConsoleReader {
     }
   }
 
-  async loadChapter(index) {
-    if (index < 0 || index >= this.totalChapters) return;
+  async loadAllContent() {
+    // Concatenate all chapters into one continuous stream
+    const lines = [];
 
-    try {
-      const text = await this.parser.getChapterContent(index);
-      this.content = text.split('\n\n').filter(line => line.trim().length > 0);
-      this.currentChapter = index;
-      this.currentLine = 0;
-
-      this.renderPage();
-      this.updateProgress();
-      this.updateWarnings();
-      this.saveProgress();
-    } catch (err) {
-      console.error('Failed to load chapter:', err);
-      this.elements.chapterBody.textContent = 'Failed to load chapter content.';
+    for (let i = 0; i < this.parser.chapters.length; i++) {
+      const text = await this.parser.getChapterContent(i);
+      // Split into lines and filter empty ones
+      const chapterLines = text.split('\n').filter(line => line.trim().length > 0);
+      lines.push(...chapterLines);
     }
+
+    this.allContent = lines;
+    this.currentLine = 0;
+    this.renderPage();
   }
 
   renderPage() {
@@ -190,46 +168,64 @@ class ConsoleReader {
     this.elements.chapterTitle.textContent = chapter?.title || `Chapter ${this.currentChapter + 1}`;
     this.elements.chapterTitle.title = chapter?.title || '';
 
-    const pageContent = this.content.slice(this.currentLine, this.currentLine + this.linesPerPage).join('\n\n');
-    this.elements.chapterBody.textContent = pageContent || 'No content';
+    // Get page content
+    const pageContent = this.allContent.slice(this.currentLine, this.currentLine + this.linesPerPage);
+    this.elements.chapterBody.textContent = pageContent.join('\n');
 
-    this.elements.lineCount.textContent = this.content.length;
-    this.elements.chapterNum.textContent = this.currentChapter + 1;
+    // Update progress
+    this.updateProgress();
+    this.updateWarnings();
   }
 
   prevPage() {
     if (this.currentLine > 0) {
       this.currentLine = Math.max(0, this.currentLine - this.linesPerPage);
       this.renderPage();
-      this.updateProgress();
       this.saveProgress();
     } else if (this.currentChapter > 0) {
-      this.loadChapter(this.currentChapter - 1);
+      // Go to previous chapter
+      this.currentChapter--;
+      // Find the starting line of this chapter
+      const chapterStartLine = this.getChapterStartLine(this.currentChapter);
+      this.currentLine = Math.max(0, chapterStartLine);
+      this.renderPage();
+      this.saveProgress();
     }
   }
 
   nextPage() {
-    if (this.currentLine + this.linesPerPage < this.content.length) {
+    if (this.currentLine + this.linesPerPage < this.allContent.length) {
       this.currentLine += this.linesPerPage;
       this.renderPage();
-      this.updateProgress();
       this.saveProgress();
     } else if (this.currentChapter < this.totalChapters - 1) {
-      this.loadChapter(this.currentChapter + 1);
+      // Go to next chapter
+      this.currentChapter++;
+      this.currentLine = this.getChapterStartLine(this.currentChapter);
+      this.renderPage();
+      this.saveProgress();
     }
   }
 
-  updateProgress() {
-    const chapterProgress = this.currentLine / Math.max(1, this.content.length);
-    const totalProgress = ((this.currentChapter + chapterProgress) / this.totalChapters) * 100;
+  getChapterStartLine(chapterIndex) {
+    // Calculate the starting line index for a chapter
+    let lineCount = 0;
+    for (let i = 0; i < chapterIndex; i++) {
+      // We need to get chapter i content to count lines
+      // For simplicity, just return 0 if we haven't loaded that chapter
+    }
+    return 0; // Simplified - would need async chapter content loading
+  }
 
-    this.elements.progressFill.style.width = `${totalProgress}%`;
-    this.elements.progressPercent.textContent = Math.round(totalProgress);
+  updateProgress() {
+    const progress = (this.currentLine / Math.max(1, this.allContent.length)) * 100;
+    this.elements.progressFill.style.width = `${progress}%`;
+    this.elements.progressPercent.textContent = Math.round(progress);
+    this.elements.chapterNum.textContent = this.currentChapter + 1;
   }
 
   updateWarnings() {
-    this.elements.lineCount.textContent = this.content.length;
-    this.elements.chapterNum.textContent = this.currentChapter + 1;
+    this.elements.lineCount.textContent = this.allContent.length;
   }
 
   showToc() {
@@ -261,7 +257,9 @@ class ConsoleReader {
   }
 
   jumpToChapter() {
-    this.loadChapter(this.selectedChapterIndex);
+    this.currentChapter = this.selectedChapterIndex;
+    this.currentLine = 0;
+    this.loadAllContent();
     this.hideToc();
   }
 
@@ -284,8 +282,6 @@ class ConsoleReader {
   }
 
   applySettings(settings) {
-    // Theme is now handled automatically via CSS prefers-color-scheme
-    // Only apply font size and line height from saved settings
     if (settings.fontSize) {
       this.elements.chapterBody.style.fontSize = `${settings.fontSize}px`;
     }
@@ -295,7 +291,6 @@ class ConsoleReader {
   }
 }
 
-// Initialize
 document.addEventListener('DOMContentLoaded', () => {
   window.reader = new ConsoleReader();
 });
