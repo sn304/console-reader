@@ -6,8 +6,9 @@ class ConsoleReader {
     this.chapterStartLines = [];
     this.allLines = [];
     this.currentPage = 0;
-    this.linesPerPage = 0;  // Calculated from viewport
+    this.linesPerPage = 0;
     this.fontSize = 13;
+    this.selectedChapterIndex = 0;
 
     this.initElements();
     this.bindEvents();
@@ -17,14 +18,13 @@ class ConsoleReader {
 
   initElements() {
     this.elements = {
-      lineCount: document.getElementById('line-count'),
-      chapterNum: document.getElementById('chapter-num'),
       chapterTitle: document.getElementById('chapter-title'),
       chapterBody: document.getElementById('chapter-body'),
       progressFill: document.getElementById('progress-fill'),
       progressPercent: document.getElementById('progress-percent'),
       tocModal: document.getElementById('toc-modal'),
       chapterList: document.getElementById('chapter-list'),
+      readerWrapper: document.getElementById('reader-wrapper'),
       readerContent: document.getElementById('reader-content'),
       btnPrev: document.getElementById('btn-prev'),
       btnNext: document.getElementById('btn-next'),
@@ -37,7 +37,12 @@ class ConsoleReader {
       btnFontLarger: document.getElementById('btn-font-larger'),
       fontSizeDisplay: document.getElementById('font-size-display'),
       fileInput: document.getElementById('file-input'),
-      emptyState: document.getElementById('empty-state')
+      emptyState: document.getElementById('empty-state'),
+      consoleBottombar: document.getElementById('console-bottombar'),
+      lineCountDisplay: document.getElementById('line-count-display'),
+      chapterNumDisplay: document.getElementById('chapter-num-display'),
+      consoleOutput: document.getElementById('console-output'),
+      consoleRows: document.querySelectorAll('.console-row')
     };
   }
 
@@ -55,7 +60,7 @@ class ConsoleReader {
     document.addEventListener('keydown', (e) => this.handleKeydown(e));
     this.elements.fileInput.addEventListener('change', (e) => this.handleFileOpen(e));
 
-    document.querySelector('.console-header').addEventListener('dblclick', () => {
+    document.querySelector('.console-topbar').addEventListener('dblclick', () => {
       this.elements.fileInput.click();
     });
 
@@ -68,6 +73,14 @@ class ConsoleReader {
         this.prevPage();
       }
     }, { passive: false });
+
+    // Recalculate on window resize
+    window.addEventListener('resize', () => {
+      if (this.parser) {
+        this.calculateLinesPerPage();
+        this.renderCurrentPage();
+      }
+    });
   }
 
   handleKeydown(e) {
@@ -128,23 +141,20 @@ class ConsoleReader {
     }
   }
 
-  // Calculate how many lines fit in the viewport
   calculateLinesPerPage() {
     const el = this.elements.readerContent;
     const bodyEl = this.elements.chapterBody;
 
-    // Get computed style
-    const style = getComputedStyle(bodyEl);
-    const lineHeight = parseFloat(style.lineHeight) || 20;
-    const paddingTop = parseFloat(style.paddingTop) || 0;
-    const paddingBottom = parseFloat(style.paddingBottom) || 0;
+    const bodyStyle = getComputedStyle(bodyEl);
+    const elStyle = getComputedStyle(el);
 
-    // Available height = container height - padding
+    const lineHeight = parseFloat(bodyStyle.lineHeight) || (this.fontSize * 1.65);
+    const paddingTop = parseFloat(elStyle.paddingTop) || 8;
+    const paddingBottom = parseFloat(elStyle.paddingBottom) || 8;
+
     const availableHeight = el.clientHeight - paddingTop - paddingBottom;
-
-    // Calculate lines per page
     this.linesPerPage = Math.floor(availableHeight / lineHeight);
-    this.linesPerPage = Math.max(3, this.linesPerPage);  // At least 3 lines
+    this.linesPerPage = Math.max(3, this.linesPerPage);
   }
 
   getTotalPages() {
@@ -157,7 +167,6 @@ class ConsoleReader {
       this.currentPage--;
       this.renderCurrentPage();
     } else if (this.currentChapterIndex > 0) {
-      // Go to previous chapter
       this.currentChapterIndex--;
       this.currentPage = 0;
       this.renderCurrentPage();
@@ -171,7 +180,6 @@ class ConsoleReader {
       this.currentPage++;
       this.renderCurrentPage();
     } else if (this.currentChapterIndex < this.chapters.length - 1) {
-      // Go to next chapter
       this.currentChapterIndex++;
       this.currentPage = 0;
       this.renderCurrentPage();
@@ -189,28 +197,37 @@ class ConsoleReader {
   }
 
   renderCurrentPage() {
-    // Calculate line range for current page
     const startLine = this.currentPage * this.linesPerPage;
     const endLine = Math.min(startLine + this.linesPerPage, this.allLines.length);
     const pageLines = this.allLines.slice(startLine, endLine);
 
-    // Update display
     this.elements.chapterBody.textContent = pageLines.join('\n');
 
-    // Update chapter info
     const chapter = this.chapters[this.currentChapterIndex];
     this.elements.chapterTitle.textContent = chapter?.title || `Chapter ${this.currentChapterIndex + 1}`;
-    this.elements.chapterTitle.title = chapter?.title || '';
-    this.elements.chapterNum.textContent = this.currentChapterIndex + 1;
 
-    // Update progress
+    // Update status bar displays
+    this.elements.lineCountDisplay.textContent = this.allLines.length;
+    this.elements.chapterNumDisplay.textContent = this.currentChapterIndex + 1;
+
+    // Update fake console output
+    this.updateConsoleOutput();
+
     this.updateProgress();
-
-    // Update warnings
-    this.elements.lineCount.textContent = this.allLines.length;
-
-    // Update TOC if open
     this.updateChapterListSelection();
+  }
+
+  updateConsoleOutput() {
+    const totalPages = this.getTotalPages();
+    const chapter = this.chapters[this.currentChapterIndex];
+
+    const rows = this.elements.consoleRows;
+    if (rows[0]) {
+      rows[0].querySelector('.line-count').textContent = this.allLines.length;
+    }
+    if (rows[1]) {
+      rows[1].querySelector('.chapter-num').textContent = this.currentChapterIndex + 1;
+    }
   }
 
   updateProgress() {
@@ -231,13 +248,15 @@ class ConsoleReader {
   }
 
   showEmptyState() {
-    this.elements.emptyState.style.display = 'flex';
-    this.elements.readerContent.style.display = 'none';
+    this.elements.emptyState.classList.remove('hidden');
+    this.elements.readerWrapper.classList.remove('active');
+    this.elements.consoleOutput.style.display = 'none';
   }
 
   hideEmptyState() {
-    this.elements.emptyState.style.display = 'none';
-    this.elements.readerContent.style.display = 'block';
+    this.elements.emptyState.classList.add('hidden');
+    this.elements.readerWrapper.classList.add('active');
+    this.elements.consoleOutput.style.display = 'block';
   }
 
   async handleFileOpen(e) {
@@ -304,7 +323,6 @@ class ConsoleReader {
     this.elements.chapterBody.style.fontSize = `${this.fontSize}px`;
     this.elements.fontSizeDisplay.textContent = `${this.fontSize}px`;
 
-    // Recalculate lines per page after font change
     this.calculateLinesPerPage();
     this.renderCurrentPage();
 
@@ -338,10 +356,9 @@ class ConsoleReader {
   }
 
   toggleHide() {
-    this.elements.readerContent.classList.toggle('hidden');
-    document.querySelector('.console-warnings').classList.toggle('hidden');
-    document.querySelector('.progress-bar').classList.toggle('hidden');
-    document.querySelector('.nav-buttons').classList.toggle('hidden');
+    this.elements.readerWrapper.classList.toggle('hidden');
+    this.elements.consoleOutput.classList.toggle('hidden');
+    this.elements.consoleBottombar?.classList.toggle('hidden');
   }
 
   async saveProgress() {

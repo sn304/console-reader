@@ -6,53 +6,87 @@
 </head>
 <body>
   <div id="app">
-    <div class="console-header">
-      <span class="console-title">&#9654; Console Reader</span>
-      <div class="header-actions">
-        <span class="btn-hide" title="Hide Reader (H)">[HIDE]</span>
+    <!-- Console Top Bar -->
+    <div class="console-topbar">
+      <span class="console-label">Console</span>
+      <div class="topbar-filters">
+        <span class="filter-dot warn"></span>
+        <span class="filter-dot error"></span>
+        <span class="filter-dot info"></span>
+      </div>
+      <div class="topbar-spacer"></div>
+      <span class="btn-hide" title="Hide Reader (H)">[HIDE]</span>
+    </div>
+
+    <!-- Fake Console Output (Camouflage) -->
+    <div class="console-output" id="console-output">
+      <div class="console-row">
+        <span class="timestamp">10:23:45</span>
+        <span class="log-warn">⚠ Warning:</span>
+        <span class="log-text">Large console output detected (<span class="line-count">0</span> entries)</span>
+      </div>
+      <div class="console-row">
+        <span class="timestamp">10:23:46</span>
+        <span class="log-info">ℹ Info:</span>
+        <span class="log-text">Loading chapter <span class="chapter-num">1</span>...</span>
+      </div>
+      <div class="console-row">
+        <span class="timestamp">10:23:47</span>
+        <span class="log-success">✓ Success:</span>
+        <span class="log-text">Content rendered successfully</span>
       </div>
     </div>
 
-    <div class="console-warnings">
-      <span class="warning">&#9888; <span id="line-count">0</span> lines</span>
-      <span class="info">&#9776; Ch<span id="chapter-num">1</span></span>
-      <span class="font-controls">
-        <button class="font-btn" id="btn-font-smaller" title="Smaller Font (Ctrl+-)">A-</button>
-        <span id="font-size-display">13px</span>
-        <button class="font-btn" id="btn-font-larger" title="Larger Font (Ctrl++)">A+</button>
-      </span>
+    <!-- Reader Content (Hidden real content) -->
+    <div class="reader-wrapper" id="reader-wrapper">
+      <div class="reader-content" id="reader-content">
+        <div class="chapter-header">
+          <span class="chapter-title" id="chapter-title"></span>
+        </div>
+        <div class="chapter-body" id="chapter-body"></div>
+      </div>
+    </div>
+
+    <!-- Bottom Status Bar -->
+    <div class="console-bottombar" id="console-bottombar">
+      <div class="status-left">
+        <span class="status-item">Lines: <span class="line-count" id="line-count-display">0</span></span>
+        <span class="status-sep">|</span>
+        <span class="status-item">Ch <span class="chapter-num" id="chapter-num-display">1</span></span>
+      </div>
+      <div class="status-center">
+        <span class="chapter-nav">
+          <button class="nav-btn" id="btn-prev" title="Previous Page (↑)">▲</button>
+          <button class="nav-btn" id="btn-toc" title="Table of Contents (T)">☰</button>
+          <button class="nav-btn" id="btn-next" title="Next Page (↓)">▼</button>
+        </span>
+      </div>
+      <div class="status-right">
+        <span class="font-ctrl">
+          <button class="font-btn" id="btn-font-smaller" title="Smaller (Ctrl+-)">A-</button>
+          <span class="font-size" id="font-size-display">13px</span>
+          <button class="font-btn" id="btn-font-larger" title="Larger (Ctrl++)">A+</button>
+        </span>
+        <span class="status-sep">|</span>
+        <span class="progress-text"><span id="progress-percent">0</span>%</span>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Empty State -->
-    <div id="empty-state" class="empty-state">
-      <div class="empty-icon">&#128214;</div>
-      <div class="empty-title">No book open</div>
-      <div class="empty-hint">Double-click header or press O to open</div>
-      <button class="console-btn primary" id="btn-open">Open EPUB File</button>
-    </div>
-
-    <div class="reader-content" id="reader-content" style="display:none;">
-      <div class="chapter-title" id="chapter-title">Loading...</div>
-      <div class="chapter-body" id="chapter-body"></div>
-    </div>
-
-    <div class="progress-bar">
-      <div class="progress-track">
-        <div class="progress-fill" id="progress-fill"></div>
-      </div>
-      <div class="progress-text"><span id="progress-percent">0</span>%</div>
-    </div>
-
-    <div class="nav-buttons">
-      <button class="console-btn" id="btn-prev">&#8593; Up</button>
-      <button class="console-btn" id="btn-toc">&#9776; Contents</button>
-      <button class="console-btn" id="btn-next">Down &#8595;</button>
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">📖</div>
+      <div class="empty-text">No book loaded</div>
+      <div class="empty-hint">Double-click header or press O to open EPUB</div>
+      <button class="console-btn primary" id="btn-open">Open EPUB</button>
     </div>
 
     <!-- TOC Modal -->
     <div class="modal" id="toc-modal" style="display:none;">
       <div class="modal-content">
-        <div class="modal-header">&#9776; Chapter Navigation</div>
+        <div class="modal-header">☰ Chapters</div>
         <div class="chapter-list" id="chapter-list"></div>
         <div class="modal-footer">
           <button class="console-btn" id="btn-cancel">Cancel</button>
